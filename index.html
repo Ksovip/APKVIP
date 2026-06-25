@@ -37,7 +37,7 @@
         /* စာသားနှင့် ခလုပ်ထည့်မည့် ဘောင် (Card Container) */
         .main-container {
             text-align: center;
-            background: rgba(255, 255, 255, 0.1); /* မှန်ကြည်ဒီဇိုင်း */
+            background: rgba(255, 255, 255, 0.1); 
             padding: 35px 40px;
             border-radius: 20px;
             backdrop-filter: blur(10px);
@@ -47,12 +47,16 @@
             width: 100%;
         }
 
+        /* ခေါင်းစဉ် KSOVIP စတိုင် */
         h1 {
             font-size: 3rem;
             margin-bottom: 25px;
             letter-spacing: 3px;
             text-shadow: 2px 4px 10px rgba(0, 0, 0, 0.3);
             font-weight: bold;
+            cursor: default;
+            user-select: none; 
+            -webkit-user-select: none;
         }
 
         /* ဒေါင်းလုဒ် ခလုပ်စတိုင် */
@@ -133,7 +137,6 @@
         .admin-section {
             border-top: 1px solid rgba(255, 255, 255, 0.2);
             padding-top: 22px;
-            margin-bottom: 20px;
         }
 
         .admin-title {
@@ -172,28 +175,17 @@
         .msg-btn { background-color: #006aff; }
         .msg-btn:hover { background-color: #0056cc; transform: translateY(-2px); }
 
-        /* Admin စာဝင်စစ်ရန် ခလုပ်နှင့် Panel */
-        .admin-toggle-btn {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-            border: 1px dashed rgba(255, 255, 255, 0.3);
-            padding: 8px;
-            width: 100%;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.85rem;
-        }
-
+        /* လျှို့ဝှက် Admin Panel */
         .admin-panel {
             display: none;
-            background: rgba(0, 0, 0, 0.4);
+            background: rgba(0, 0, 0, 0.5);
             padding: 15px;
             border-radius: 12px;
             text-align: left;
             max-height: 200px;
             overflow-y: auto;
             border: 1px solid rgba(255, 255, 255, 0.2);
-            margin-top: 10px;
+            margin-top: 20px;
         }
 
         .msg-item {
@@ -221,7 +213,7 @@
 <body>
 
     <div class="main-container">
-        <h1>KSOVIP</h1>
+        <h1 onclick="handleHeaderClick()">KSOVIP</h1>
         
         <a href="#" class="download-btn">
             <i class="fa-solid fa-cloud-arrow-down"></i> DOWNLOAD NOW
@@ -247,13 +239,9 @@
             </div>
         </div>
 
-        <button class="admin-toggle-btn" onclick="toggleAdminPanel()">
-            <i class="fa-solid fa-lock"></i> Admin Panel (စာဝင်စစ်ရန်)
-        </button>
-        
         <div id="adminPanel" class="admin-panel">
             <div style="margin-bottom: 10px; height: 20px;">
-                <span style="font-size: 0.85rem; font-weight: bold; color: #23d5ab;">ဝင်လာသော စာများ-</span>
+                <span style="font-size: 0.85rem; font-weight: bold; color: #23d5ab;"><i class="fa-solid fa-unlock"></i> ဝင်လာသော စာများ-</span>
                 <button class="clear-btn" onclick="clearMessages()">စာအားလုံးဖျက်ရန်</button>
             </div>
             <div id="messageList">
@@ -262,10 +250,31 @@
     </div>
 
     <script>
+        // Browser က Memory သိမ်းခွင့် ပိတ်ထားရင် သုံးဖို့အရန် Array
+        let backupMessages = [];
+
         window.onload = function() {
             displayMessages();
         };
 
+        let clickCount = 0;
+        let clickTimeout;
+
+        function handleHeaderClick() {
+            clickCount++;
+            clearTimeout(clickTimeout);
+
+            if (clickCount === 3) {
+                clickCount = 0; 
+                toggleAdminPanel(); 
+            } else {
+                clickTimeout = setTimeout(() => {
+                    clickCount = 0;
+                }, 1000);
+            }
+        }
+
+        // စာသိမ်းဆည်းခြင်း လုပ်ဆောင်ချက် (Error မတက်အောင် မွမ်းမံထားသည်)
         function saveMessage() {
             const msgInput = document.getElementById('userMessage');
             const msgText = msgInput.value.trim();
@@ -275,27 +284,48 @@
                 return;
             }
 
-            let messages = JSON.parse(localStorage.getItem('kso_messages')) || [];
             const timeNow = new Date().toLocaleTimeString();
-            messages.push({ text: msgText, time: timeNow });
+            const newMsg = { text: msgText, time: timeNow };
 
-            localStorage.setItem('kso_messages', JSON.stringify(messages));
+            try {
+                let messages = JSON.parse(localStorage.getItem('kso_messages')) || [];
+                messages.push(newMsg);
+                localStorage.setItem('kso_messages', JSON.stringify(messages));
+            } catch (e) {
+                // Incognito Mode သို့မဟုတ် Webview တွင် လုံခြုံရေးအရ ပိတ်ထားပါက ယာယီမှတ်ဉာဏ်ထဲသိမ်းမည်
+                backupMessages.push(newMsg);
+            }
 
             alert('စာသားပေးပို့ခြင်း အောင်မြင်ပါသည်။');
             msgInput.value = ''; 
             displayMessages();  
         }
 
+        // စာပြန်ထုတ်ပြခြင်း လုပ်ဆောင်ချက်
         function displayMessages() {
             const messageList = document.getElementById('messageList');
-            let messages = JSON.parse(localStorage.getItem('kso_messages')) || [];
+            if (!messageList) return;
+
+            let messages = [];
+            try {
+                messages = JSON.parse(localStorage.getItem('kso_messages')) || [];
+            } catch (e) {
+                messages = backupMessages;
+            }
+
+            if (messages.length === 0 && backupMessages.length > 0) {
+                messages = backupMessages;
+            }
 
             if (messages.length === 0) {
                 messageList.innerHTML = '<p style="color: #aaa; font-size: 0.85rem; text-align:center;">စာမရှိသေးပါ။</p>';
                 return;
             }
 
-            messageList.innerHTML = messages.reverse().map(msg => `
+            // စာရင်းပြောင်းပြန်လှန်ပြီး ပြသခြင်း
+            const reversedMessages = [...messages].reverse();
+
+            messageList.innerHTML = reversedMessages.map(msg => `
                 <div class="msg-item">
                     <small style="color: #ff2b6d; font-size: 0.7rem; display:block;">🕒 ${msg.time}</small>
                     ${msg.text}
@@ -303,32 +333,30 @@
             `).join('');
         }
 
-        // Admin Panel ကို Password စစ်ပြီးမှ ဖွင့်ပေးမည့် လုပ်ဆောင်ချက်
         function toggleAdminPanel() {
             const panel = document.getElementById('adminPanel');
             
-            // ပွင့်နေပြီးသားဆိုရင် ပြန်ပိတ်ဖို့ Password ထပ်တောင်းစရာမလိုအောင် လုပ်ထားခြင်း
             if (panel.style.display === 'block') {
                 panel.style.display = 'none';
                 return;
             }
 
-            // Password တောင်းခြင်း
             const adminPass = prompt("Admin Password ကို ရိုက်ထည့်ပါ -");
 
-            // ရိုက်လိုက်တဲ့ Password ကို စစ်ဆေးခြင်း
             if (adminPass === "225775") {
                 panel.style.display = 'block';
-                displayMessages(); // စာရင်းကို Update လုပ်ပြီး ပြသခြင်း
+                displayMessages();
             } else if (adminPass !== null) { 
-                // Cancel ခလုပ်မနှိပ်ဘဲ Password မှားရိုက်ရင် ပြမည့် Alert
                 alert("လုံခြုံရေးကုဒ် မှားယွင်းနေပါသည်။ ရယူခွင့်မရှိပါ။");
             }
         }
 
         function clearMessages() {
             if(confirm('စာအားလုံးကို ဖျက်ပစ်မှာ သေချာပါသလား?')) {
-                localStorage.removeItem('kso_messages');
+                try {
+                    localStorage.removeItem('kso_messages');
+                } catch(e) {}
+                backupMessages = [];
                 displayMessages();
             }
         }
