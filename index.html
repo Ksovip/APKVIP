@@ -250,7 +250,6 @@
     </div>
 
     <script>
-        // Browser က Memory သိမ်းခွင့် ပိတ်ထားရင် သုံးဖို့အရန် Array
         let backupMessages = [];
 
         window.onload = function() {
@@ -266,7 +265,7 @@
 
             if (clickCount === 3) {
                 clickCount = 0; 
-                toggleAdminPanel(); 
+                loginAdmin(); // လက်ဗွေ သို့မဟုတ် Password စစ်ဆေးရန် သွားမည်
             } else {
                 clickTimeout = setTimeout(() => {
                     clickCount = 0;
@@ -274,7 +273,103 @@
             }
         }
 
-        // စာသိမ်းဆည်းခြင်း လုပ်ဆောင်ချက် (Error မတက်အောင် မွမ်းမံထားသည်)
+        // WebAuthn အတွက် Buffer ပြောင်းလဲပေးသည့် Utility Function များ
+        function bufferToBase64(buffer) {
+            return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+        }
+        function base64ToBuffer(base64) {
+            var binary_string = window.atob(base64);
+            var len = binary_string.length;
+            var bytes = new Uint8Array(len);
+            for (var i = 0; i < len; i++) { bytes[i] = binary_string.charCodeAt(i); }
+            return bytes.buffer;
+        }
+
+        // Admin Panel ဝင်ရောက်ခြင်း စနစ်ကြီးတစ်ခုလုံး
+        async function loginAdmin() {
+            const panel = document.getElementById('adminPanel');
+            
+            if (panel.style.display === 'block') {
+                panel.style.display = 'none';
+                return;
+            }
+
+            // လက်ဗွေမှတ်တမ်း ရှိမရှိ စစ်ဆေးခြင်း
+            const savedCredId = localStorage.getItem('kso_admin_cred_id');
+
+            // HTTPS ဖြစ်ပြီး ဖုန်းမှာ လက်ဗွေမှတ်တမ်း ရှိထားပြီးသားဆိုရင် တိုက်ရိုက် လက်ဗွေတောင်းမည်
+            if (window.PublicKeyCredential && window.isSecureContext && savedCredId) {
+                try {
+                    const challenge = new Uint8Array(32);
+                    window.crypto.getRandomValues(challenge);
+
+                    const publicKey = {
+                        challenge: challenge,
+                        allowCredentials: [{
+                            id: base64ToBuffer(savedCredId),
+                            type: 'public-key'
+                        }],
+                        timeout: 60000
+                    };
+
+                    const assertion = await navigator.credentials.get({ publicKey });
+                    if (assertion) {
+                        panel.style.display = 'block';
+                        displayMessages();
+                        return; // လက်ဗွေအောင်မြင်သဖြင့် ရပ်မည်
+                    }
+                } catch (err) {
+                    console.log("Biometric login failed, falling back to password...", err);
+                }
+            }
+
+            // လက်ဗွေစနစ် အလုပ်မလုပ်ပါက (သို့မဟုတ်) ပထမဆုံးအကြိမ်ဖြစ်ပါက Password တောင်းမည်
+            const adminPass = prompt("Admin Password ကို ရိုက်ထည့်ပါ -");
+
+            if (adminPass === "225775") {
+                panel.style.display = 'block';
+                displayMessages();
+
+                // HTTPS ဖြစ်ပြီး လက်ဗွေ မမှတ်ရသေးရင် လက်ဗွေမှတ်ပုံတင်မလား မေးမည်
+                if (window.PublicKeyCredential && window.isSecureContext && !savedCredId) {
+                    setTimeout(async () => {
+                        if (confirm("နောက်တစ်ကြိမ်တွင် Password မလိုဘဲ လက်ဗွေရာဖြင့် ဝင်ချင်ပါသလား?")) {
+                            try {
+                                const challenge = new Uint8Array(32);
+                                window.crypto.getRandomValues(challenge);
+                                const userId = new Uint8Array(16);
+                                window.crypto.getRandomValues(userId);
+
+                                const publicKey = {
+                                    challenge: challenge,
+                                    rp: { name: "KSOVIP Admin" },
+                                    user: {
+                                        id: userId,
+                                        name: "admin@ksovip.com",
+                                        displayName: "Admin"
+                                    },
+                                    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+                                    authenticatorSelection: { authenticatorAttachment: "platform" },
+                                    timeout: 60000
+                                };
+
+                                const credential = await navigator.credentials.create({ publicKey });
+                                if (credential) {
+                                    const credIdBase64 = bufferToBase64(credential.rawId);
+                                    localStorage.setItem('kso_admin_cred_id', credIdBase64);
+                                    alert("လက်ဗွေရာ မှတ်သားခြင်း အောင်မြင်ပါသည်။ နောက်တစ်ခေါက်မှစ၍ လက်ဗွေသုံးနိုင်ပါပြီ။");
+                                }
+                            } catch (e) {
+                                alert("လက်ဗွေမှတ်သားခြင်း မအောင်မြင်ပါ။ ဖုန်းတွင် Lock ကောင်းမွန်စွာ ချထားရန် လိုအပ်ပါသည်။");
+                            }
+                        }
+                    }, 500);
+                }
+            } else if (adminPass !== null) { 
+                alert("လုံခြုံရေးကုဒ် မှားယွင်းနေပါသည်။ ရယူခွင့်မရှိပါ။");
+            }
+        }
+
         function saveMessage() {
             const msgInput = document.getElementById('userMessage');
             const msgText = msgInput.value.trim();
@@ -292,7 +387,6 @@
                 messages.push(newMsg);
                 localStorage.setItem('kso_messages', JSON.stringify(messages));
             } catch (e) {
-                // Incognito Mode သို့မဟုတ် Webview တွင် လုံခြုံရေးအရ ပိတ်ထားပါက ယာယီမှတ်ဉာဏ်ထဲသိမ်းမည်
                 backupMessages.push(newMsg);
             }
 
@@ -301,7 +395,6 @@
             displayMessages();  
         }
 
-        // စာပြန်ထုတ်ပြခြင်း လုပ်ဆောင်ချက်
         function displayMessages() {
             const messageList = document.getElementById('messageList');
             if (!messageList) return;
@@ -322,7 +415,6 @@
                 return;
             }
 
-            // စာရင်းပြောင်းပြန်လှန်ပြီး ပြသခြင်း
             const reversedMessages = [...messages].reverse();
 
             messageList.innerHTML = reversedMessages.map(msg => `
@@ -331,24 +423,6 @@
                     ${msg.text}
                 </div>
             `).join('');
-        }
-
-        function toggleAdminPanel() {
-            const panel = document.getElementById('adminPanel');
-            
-            if (panel.style.display === 'block') {
-                panel.style.display = 'none';
-                return;
-            }
-
-            const adminPass = prompt("Admin Password ကို ရိုက်ထည့်ပါ -");
-
-            if (adminPass === "225775") {
-                panel.style.display = 'block';
-                displayMessages();
-            } else if (adminPass !== null) { 
-                alert("လုံခြုံရေးကုဒ် မှားယွင်းနေပါသည်။ ရယူခွင့်မရှိပါ။");
-            }
         }
 
         function clearMessages() {
